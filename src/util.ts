@@ -24,3 +24,21 @@ export const comoObjeto = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
 export const comoLista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/**
+ * Troca o domínio da central do SGP pelo domínio público do tenant.
+ * Sem link_boleto_base configurado, devolve o link original.
+ * Com ele configurado, só /boleto/ é repassado; qualquer outro caminho vira null
+ * (o proxy público só serve /boleto/, e nada do domínio original chega ao cliente).
+ */
+export function linkPublico(base: string | null | undefined, link: unknown): string | null {
+  if (typeof link !== 'string' || !link) return null;
+  if (!base) return link;
+  try {
+    const u = new URL(link);
+    if (!u.pathname.startsWith('/boleto/')) return null;
+    return base.replace(/\/+$/, '') + u.pathname + u.search;
+  } catch {
+    return null;
+  }
+}

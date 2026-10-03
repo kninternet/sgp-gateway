@@ -22,7 +22,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
   const { rows } = await pool.query(
     `SELECT c.id, c.tenant_id, c.nome, c.pop_id, c.permite_telefone,
             t.id AS t_id, t.nome AS t_nome, t.sgp_base_url, t.sgp_app, t.sgp_token_env,
-            t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via
+            t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via, t.link_boleto_base
        FROM gateway.canais c
        JOIN gateway.tenants t ON t.id = c.tenant_id
       WHERE c.key_hash = $1 AND c.ativo AND t.ativo`,
@@ -41,6 +41,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
     pops_permitidos: r.pops_permitidos,
     empresa_cnpj: r.empresa_cnpj,
     gerar_os_2via: r.gerar_os_2via,
+    link_boleto_base: r.link_boleto_base,
   };
 
   // Trava de configuração: o POP do canal precisa estar entre os POPs do tenant.

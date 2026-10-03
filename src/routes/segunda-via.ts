@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { chamarSgp } from '../sgp/client.js';
 import { contratoPermitido } from '../trava.js';
-import { comoLista, comoObjeto } from '../util.js';
+import { comoLista, comoObjeto, linkPublico } from '../util.js';
 
 const Body = z.object({ contrato_id: z.coerce.number().int().positive() });
 
@@ -39,7 +39,7 @@ export async function rotaSegundaVia(app: FastifyInstance) {
       valor: Number(l.valor ?? 0),
       vencimento_original: l.vencimento_original ?? null,
       valor_original: l.valor_original != null ? Number(l.valor_original) : null,
-      link_boleto: l.link ?? null,
+      link_boleto: linkPublico(tenant.link_boleto_base, l.link),
       linha_digitavel: l.linhadigitavel || null,
     }));
 

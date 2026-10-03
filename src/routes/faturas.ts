@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { chamarSgp } from '../sgp/client.js';
 import { contratoPermitido } from '../trava.js';
-import { comoLista, comoObjeto, diasAtraso, hojeSP } from '../util.js';
+import { comoLista, comoObjeto, diasAtraso, hojeSP, linkPublico } from '../util.js';
 
 const Body = z.object({ contrato_id: z.coerce.number().int().positive() });
 
@@ -43,8 +43,8 @@ export async function rotaFaturas(app: FastifyInstance) {
           vencimento: venc,
           vencida: atraso > 0,
           dias_atraso: atraso,
-          link_boleto: t.link ?? null,
-          link_pagamento: t.link_cobranca ?? null,
+          link_boleto: linkPublico(tenant.link_boleto_base, t.link),
+          link_pagamento: linkPublico(tenant.link_boleto_base, t.link_cobranca),
           linha_digitavel: t.linhaDigitavel || null,
           tem_pix: Boolean(t.codigoPix),
         };
