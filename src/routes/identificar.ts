@@ -10,7 +10,7 @@ const Body = z
 
 /**
  * Identifica o cliente pela BASE PRÓPRIA (não chama o SGP).
- * Só devolve contratos do POP do canal.
+ * Só devolve contratos dos POPs do canal.
  * Telefone só é aceito em canal com telefone verificado (permite_telefone);
  * no webchat qualquer um digita qualquer número, então lá só vale CPF/CNPJ.
  */
@@ -39,11 +39,11 @@ export async function rotaIdentificar(app: FastifyInstance) {
     const { rows } = await pool.query(
       `SELECT cl.id AS cliente_id, cl.nome, ct.id AS contrato_id, ct.status, ct.plano, ct.vencimento
          FROM ${s}.clientes cl
-         JOIN ${s}.contratos ct ON ct.cliente_id = cl.id AND ct.pop_id = $2
+         JOIN ${s}.contratos ct ON ct.cliente_id = cl.id AND ct.pop_id = ANY($2::int[])
         WHERE ${filtro}
         ORDER BY cl.id, ct.id
         LIMIT 20`,
-      [valor, canal.pop_id],
+      [valor, canal.pops],
     );
 
     const porCliente = new Map<number, { cliente_id: number; nome: string; contratos: unknown[] }>();

@@ -17,7 +17,7 @@ export interface Canal {
   id: number;
   tenant_id: string;
   nome: string;
-  pop_id: number;
+  pops: number[];
   permite_telefone: boolean;
 }
 

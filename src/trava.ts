@@ -8,7 +8,7 @@ export interface ContratoPermitido {
 
 /**
  * Trava de POP: o contrato só é aceito se estiver na base própria do tenant
- * E no POP do canal. Toda rota que recebe contrato passa por aqui antes do SGP.
+ * E em um dos POPs do canal. Toda rota que recebe contrato passa por aqui antes do SGP.
  */
 export async function contratoPermitido(
   tenant: Tenant,
@@ -17,8 +17,8 @@ export async function contratoPermitido(
 ): Promise<ContratoPermitido | null> {
   const s = schemaDe(tenant);
   const { rows } = await pool.query<ContratoPermitido>(
-    `SELECT id AS contrato_id, cliente_id FROM ${s}.contratos WHERE id = $1 AND pop_id = $2`,
-    [contratoId, canal.pop_id],
+    `SELECT id AS contrato_id, cliente_id FROM ${s}.contratos WHERE id = $1 AND pop_id = ANY($2::int[])`,
+    [contratoId, canal.pops],
   );
   return rows[0] ?? null;
 }

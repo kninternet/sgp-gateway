@@ -20,7 +20,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { rows } = await pool.query(
-    `SELECT c.id, c.tenant_id, c.nome, c.pop_id, c.permite_telefone,
+    `SELECT c.id, c.tenant_id, c.nome, c.pops, c.permite_telefone,
             t.id AS t_id, t.nome AS t_nome, t.sgp_base_url, t.sgp_app, t.sgp_token_env,
             t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via, t.link_boleto_base
        FROM gateway.canais c
@@ -44,9 +44,10 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
     link_boleto_base: r.link_boleto_base,
   };
 
-  // Trava de configuração: o POP do canal precisa estar entre os POPs do tenant.
-  if (!tenant.pops_permitidos.includes(r.pop_id)) {
-    req.log.error({ canal: r.id, pop: r.pop_id }, 'canal com POP fora do tenant');
+  // Trava de configuração: todos os POPs do canal precisam estar entre os POPs do tenant.
+  const pops: number[] = Array.isArray(r.pops) ? r.pops : [];
+  if (pops.length === 0 || !pops.every((p) => tenant.pops_permitidos.includes(p))) {
+    req.log.error({ canal: r.id, pops }, 'canal com POP fora do tenant');
     return reply.code(403).send({ erro: 'canal_mal_configurado' });
   }
 
@@ -56,7 +57,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
       id: r.id,
       tenant_id: r.tenant_id,
       nome: r.nome,
-      pop_id: r.pop_id,
+      pops,
       permite_telefone: r.permite_telefone,
     },
   };
