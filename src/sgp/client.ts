@@ -72,3 +72,29 @@ export async function chamarSgp(
     throw new SgpError(`SGP ${rota}: resposta não é JSON`);
   }
 }
+
+/**
+ * ESCRITA no SGP: cadastro de cliente PF no CRM (mesmo formato do pre-cadastro).
+ * Usa a credencial de escrita do tenant, separada da de leitura. É a única escrita do gateway.
+ */
+export async function cadastrarClientePf(tenant: Tenant, dados: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!tenant.sgp_write_app || !tenant.sgp_write_token_env) throw new SgpError('tenant sem credencial de escrita');
+  const corpo = { app: tenant.sgp_write_app, token: tokenDoTenant(tenant.sgp_write_token_env), ...dados };
+  let res: Response;
+  try {
+    res = await fetch(new URL('/api/crm/cliente/F', tenant.sgp_base_url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout(config.SGP_TIMEOUT_MS),
+    });
+  } catch (e) {
+    throw new SgpError(`SGP cadastro: falha de rede (${(e as Error).name})`);
+  }
+  const texto = await res.text();
+  try {
+    return JSON.parse(texto) as Record<string, unknown>;
+  } catch {
+    throw new SgpError(`SGP cadastro: HTTP ${res.status}, resposta não é JSON`, res.status);
+  }
+}

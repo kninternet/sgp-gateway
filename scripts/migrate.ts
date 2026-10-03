@@ -19,4 +19,12 @@ for (const t of await tenantsAtivos()) {
   await pool.query(template.replaceAll('{{schema}}', schemaDe(t)));
   console.log(`ok: schema do tenant ${t.id}`);
 }
+
+// Seeds rodam por último (dependem das tabelas dos tenants). Devem ser idempotentes.
+const dirSeeds = join(dir, 'seeds');
+const seeds = (await readdir(dirSeeds).catch(() => [] as string[])).filter((f) => f.endsWith('.sql')).sort();
+for (const f of seeds) {
+  await pool.query(await readFile(join(dirSeeds, f), 'utf8'));
+  console.log(`ok: seed ${f}`);
+}
 await pool.end();

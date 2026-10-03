@@ -42,3 +42,23 @@ export function linkPublico(base: string | null | undefined, link: unknown): str
     return null;
   }
 }
+
+/** Texto para comparação: sem acento, minúsculo, espaços simples. */
+export const normalizarTexto = (v: unknown): string =>
+  String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+export function cpfValido(c: string): boolean {
+  if (!/^\d{11}$/.test(c) || /^(\d)\1{10}$/.test(c)) return false;
+  for (const n of [9, 10]) {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += Number(c[i]) * (n + 1 - i);
+    if (((s * 10) % 11) % 10 !== Number(c[n])) return false;
+  }
+  return true;
+}
+
+/** Celular no formato que o SGP aceita: DDD + 9 + 8 dígitos. Null se não der. */
+export function celularParaSgp(v: unknown): string | null {
+  const d = normalizarTelefone(v);
+  return d && d.length === 11 && d[2] === '9' ? d : null;
+}

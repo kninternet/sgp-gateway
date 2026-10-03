@@ -20,9 +20,10 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { rows } = await pool.query(
-    `SELECT c.id, c.tenant_id, c.nome, c.pops, c.permite_telefone,
+    `SELECT c.id, c.tenant_id, c.nome, c.pops, c.permite_telefone, c.permite_cadastro,
             t.id AS t_id, t.nome AS t_nome, t.sgp_base_url, t.sgp_app, t.sgp_token_env,
-            t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via, t.link_boleto_base
+            t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via, t.link_boleto_base,
+            t.sgp_write_app, t.sgp_write_token_env
        FROM gateway.canais c
        JOIN gateway.tenants t ON t.id = c.tenant_id
       WHERE c.key_hash = $1 AND c.ativo AND t.ativo`,
@@ -42,6 +43,8 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
     empresa_cnpj: r.empresa_cnpj,
     gerar_os_2via: r.gerar_os_2via,
     link_boleto_base: r.link_boleto_base,
+    sgp_write_app: r.sgp_write_app,
+    sgp_write_token_env: r.sgp_write_token_env,
   };
 
   // Trava de configuração: todos os POPs do canal precisam estar entre os POPs do tenant.
@@ -59,6 +62,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
       nome: r.nome,
       pops,
       permite_telefone: r.permite_telefone,
+      permite_cadastro: r.permite_cadastro,
     },
   };
   req.auditoria = {};

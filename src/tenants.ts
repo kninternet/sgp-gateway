@@ -11,6 +11,8 @@ export interface Tenant {
   empresa_cnpj: string | null;
   gerar_os_2via: boolean;
   link_boleto_base: string | null;
+  sgp_write_app: string | null;
+  sgp_write_token_env: string | null;
 }
 
 export interface Canal {
@@ -19,6 +21,7 @@ export interface Canal {
   nome: string;
   pops: number[];
   permite_telefone: boolean;
+  permite_cadastro: boolean;
 }
 
 const SCHEMA_RE = /^[a-z_][a-z0-9_]{0,40}$/;
@@ -32,7 +35,8 @@ export function schemaDe(t: Pick<Tenant, 'schema_name'>): string {
 export async function tenantsAtivos(): Promise<Tenant[]> {
   const { rows } = await pool.query<Tenant>(
     `SELECT id, nome, sgp_base_url, sgp_app, sgp_token_env, schema_name,
-            pops_permitidos, empresa_cnpj, gerar_os_2via, link_boleto_base
+            pops_permitidos, empresa_cnpj, gerar_os_2via, link_boleto_base,
+            sgp_write_app, sgp_write_token_env
        FROM gateway.tenants WHERE ativo ORDER BY id`,
   );
   return rows;
