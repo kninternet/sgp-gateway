@@ -1,6 +1,13 @@
--- Condições de venda da Viva Net. Idempotente: só insere o que ainda não existe.
+-- Cobertura e condições de venda da Viva Net. Idempotente: reflete o estado desejado.
+-- Vendas novas vão todas para o POP 22 (um plano só).
+DELETE FROM vivanet.cobertura   WHERE (pop_id = 22 AND bairro = 'Pavuna') OR pop_id = 100072;
+DELETE FROM vivanet.planos_venda WHERE pop_id = 100072;
+DELETE FROM vivanet.pops_venda   WHERE pop_id = 100072;
+
 INSERT INTO vivanet.cobertura (pop_id, cidade, bairro) VALUES
-  (22, 'Rio de Janeiro', 'Pavuna')
+  (22, 'São Gonçalo', 'Tribobó'),
+  (22, 'São Gonçalo', 'Lacomba'),
+  (22, 'São Gonçalo', 'Nova Grécia')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO vivanet.pops_venda (pop_id, vencimentos, taxa_instalacao) VALUES
