@@ -5,8 +5,6 @@ DELETE FROM vivanet.planos_venda WHERE pop_id = 100072;
 DELETE FROM vivanet.pops_venda   WHERE pop_id = 100072;
 
 INSERT INTO vivanet.cobertura (pop_id, cidade, bairro) VALUES
-  (22, 'São Gonçalo', 'Tribobó'),
-  (22, 'São Gonçalo', 'Lacomba'),
   (22, 'São Gonçalo', 'Nova Grécia')
 ON CONFLICT DO NOTHING;
 
