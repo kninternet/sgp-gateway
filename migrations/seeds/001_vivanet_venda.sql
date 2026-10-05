@@ -8,8 +8,8 @@ INSERT INTO vivanet.cobertura (pop_id, cidade, bairro) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO vivanet.pops_venda (pop_id, vencimentos, taxa_instalacao) VALUES
-  (22,     '{5,10,15,20}', 160.00),
-  (100072, '{5,10,15,20}', 160.00)
+  (22,     '{5,10,15}', 160.00),
+  (100072, '{5,10,15}', 160.00)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO vivanet.planos_venda (pop_id, nome, valor, sgp_plano_id) VALUES
