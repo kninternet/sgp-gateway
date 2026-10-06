@@ -41,12 +41,12 @@ export async function rotaCadastro(app: FastifyInstance) {
     const s = schemaDe(tenant);
 
     // Mesmo CPF já cadastrado com sucesso nos últimos 30 dias: devolve o anterior, não duplica.
-    const anterior = await pool.query<{ cliente_id: number }>(
-      `SELECT cliente_id FROM ${s}.cadastros WHERE cpfcnpj = $1 AND status = 'ok'
+    const anterior = await pool.query<{ id: number; cliente_id: number }>(
+      `SELECT id, cliente_id FROM ${s}.cadastros WHERE cpfcnpj = $1 AND status = 'ok'
          AND criado_em > now() - interval '30 days' ORDER BY id DESC LIMIT 1`, [cpf]);
     if (anterior.rows[0]) {
       req.auditoria!.cliente_id = anterior.rows[0].cliente_id;
-      return { ok: true, cliente_id: anterior.rows[0].cliente_id, ja_existia: true };
+      return { ok: true, cliente_id: anterior.rows[0].cliente_id, lead_id: anterior.rows[0].id, ja_existia: true };
     }
 
     // Freio contra abuso do canal.
@@ -74,12 +74,14 @@ export async function rotaCadastro(app: FastifyInstance) {
       b.conversa ? `Conversa Chatwoot: ${b.conversa}` : '',
     ].filter(Boolean).join(' | ');
 
-    const registrar = (status: string, cliente_id: number | null, erro: string | null) =>
-      pool.query(
+    const registrar = async (status: string, cliente_id: number | null, erro: string | null): Promise<number> => {
+      const r = await pool.query<{ id: number }>(
         `INSERT INTO ${s}.cadastros (canal_id, conversa, cpfcnpj, pop_id, plano, vencimento, status, cliente_id, erro)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
         [canal.id, b.conversa ?? null, cpf, cob.pop_id, plano.nome, b.vencimento, status, cliente_id, erro],
       );
+      return r.rows[0].id;
+    };
 
     const resp = await cadastrarClientePf(tenant, {
       nome,
@@ -102,9 +104,13 @@ export async function rotaCadastro(app: FastifyInstance) {
 
     const clienteId = Number(resp.cliente_id);
     if (Number.isSafeInteger(clienteId) && clienteId > 0) {
-      await registrar('ok', clienteId, null);
+      const leadId = await registrar('ok', clienteId, null);
       req.auditoria!.cliente_id = clienteId;
-      return { ok: true, cliente_id: clienteId, pop_id: cob.pop_id, plano: plano.nome, vencimento: b.vencimento };
+      // O SGP cria o cliente do CRM já em "Em análise" (status 1); não há escrita de status aqui.
+      return {
+        ok: true, cliente_id: clienteId, lead_id: leadId, pop_id: cob.pop_id, plano: plano.nome,
+        plano_valor: plano.valor, vencimento: b.vencimento, status_crm: 'Em análise',
+      };
     }
 
     // O SGP é o árbitro final: CPF existente em qualquer POP (inclusive de outra marca) é recusado.

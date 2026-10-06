@@ -11,6 +11,7 @@ import { rotaIdentificar } from './routes/identificar.js';
 import { rotaPix } from './routes/pix.js';
 import { rotaSegundaVia } from './routes/segunda-via.js';
 import { SgpError } from './sgp/client.js';
+import { encerrarCrm } from './sgp/crm.js';
 
 const app = Fastify({
   logger: {
@@ -63,6 +64,7 @@ app.setErrorHandler((err, req, reply) => {
 const parar = async () => {
   await app.close();
   await pool.end();
+  await encerrarCrm();
   process.exit(0);
 };
 process.on('SIGINT', parar);

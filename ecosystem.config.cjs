@@ -8,12 +8,12 @@ module.exports = {
       max_memory_restart: '200M',
     },
     {
-      // Sync da base própria: roda a cada hora e encerra.
+      // Sync da base própria: roda todo dia às 3h e encerra.
       name: 'sgp-gateway-sync',
       script: 'dist/src/sync.js',
       node_args: '--env-file=.env',
       env: { NODE_ENV: 'production', TZ: 'America/Sao_Paulo' },
-      cron_restart: '0 * * * *',
+      cron_restart: '0 3 * * *',
       autorestart: false,
     },
   ],

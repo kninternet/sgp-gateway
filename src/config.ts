@@ -10,6 +10,10 @@ const schema = z.object({
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   LOG_LEVEL: z.string().default('info'),
   SGP_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  // Banco do SGP, somente leitura (status do funil do CRM). Opcional.
+  SGP_DB_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  // Tempo máximo da consulta sob demanda antes de cair para a base própria.
+  SGP_IDENTIFICAR_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
 });
 
 export const config = schema.parse(process.env);

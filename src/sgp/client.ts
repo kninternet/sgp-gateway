@@ -37,6 +37,7 @@ export async function chamarSgp(
   rota: RotaSgp,
   campos: CamposSgp = {},
   id?: number,
+  timeoutMs: number = config.SGP_TIMEOUT_MS,
 ): Promise<unknown> {
   let path: string = ROTAS[rota];
   if (path.includes(':id')) {
@@ -57,7 +58,7 @@ export async function chamarSgp(
     res = await fetch(new URL(path, tenant.sgp_base_url), {
       method: 'POST',
       body: form,
-      signal: AbortSignal.timeout(config.SGP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
     throw new SgpError(`SGP ${rota}: falha de rede (${(e as Error).name})`);
