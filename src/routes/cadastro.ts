@@ -19,8 +19,6 @@ const Body = z.object({
   conversa: z.string().max(60).optional().nullable(),
 });
 
-const LIMITE_POR_HORA = 20;
-
 /**
  * Cadastro de cliente PF no CRM do SGP. Única escrita do gateway.
  * Revalida tudo (CPF, cobertura, plano, vencimento) — nada vem pronto do modelo.
@@ -40,20 +38,8 @@ export async function rotaCadastro(app: FastifyInstance) {
 
     const s = schemaDe(tenant);
 
-    // Mesmo CPF já cadastrado com sucesso nos últimos 30 dias: devolve o anterior, não duplica.
-    const anterior = await pool.query<{ id: number; cliente_id: number }>(
-      `SELECT id, cliente_id FROM ${s}.cadastros WHERE cpfcnpj = $1 AND status = 'ok'
-         AND criado_em > now() - interval '30 days' ORDER BY id DESC LIMIT 1`, [cpf]);
-    if (anterior.rows[0]) {
-      req.auditoria!.cliente_id = anterior.rows[0].cliente_id;
-      return { ok: true, cliente_id: anterior.rows[0].cliente_id, lead_id: anterior.rows[0].id, ja_existia: true };
-    }
-
-    // Freio contra abuso do canal.
-    const recentes = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM ${s}.cadastros WHERE canal_id = $1 AND criado_em > now() - interval '1 hour'`, [canal.id]);
-    if (recentes.rows[0].n >= LIMITE_POR_HORA) return reply.code(429).send({ erro: 'limite_de_cadastros' });
-
+    // Sem limite por hora e sem bloqueio de CPF repetido no gateway: o SGP já recusa
+    // um CPF existente, e esse caso vai para o atendimento.
     const cob = await consultarCobertura(tenant, canal, b.cep);
     if (!cob.atende) return reply.code(422).send({ erro: 'sem_cobertura', motivo: cob.motivo });
 
