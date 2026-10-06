@@ -7,6 +7,17 @@ export function normalizarTelefone(v: unknown): string | null {
   return d.length === 10 || d.length === 11 ? d : null;
 }
 
+/**
+ * Formas do mesmo celular com e sem o nono dígito: o WhatsApp às vezes entrega
+ * o número antigo (DDD + 8 dígitos) e o SGP guarda o novo, ou o contrário.
+ */
+export function variantesTelefone(tel: string): string[] {
+  const d = soDigitos(tel);
+  if (d.length === 11 && d[2] === '9') return [d, d.slice(0, 2) + d.slice(3)];
+  if (d.length === 10 && /[6-9]/.test(d[2])) return [d, d.slice(0, 2) + '9' + d.slice(2)];
+  return [d];
+}
+
 /** Data de hoje em America/Sao_Paulo, formato AAAA-MM-DD. */
 export function hojeSP(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());

@@ -89,3 +89,9 @@ CREATE TABLE IF NOT EXISTS {{schema}}.cadastros (
 );
 CREATE INDEX IF NOT EXISTS cadastros_cpf ON {{schema}}.cadastros (cpfcnpj);
 CREATE INDEX IF NOT EXISTS cadastros_canal_ts ON {{schema}}.cadastros (canal_id, criado_em);
+
+-- v4.1: identificação pelo número do WhatsApp, inclusive de quem só fez cadastro pelo Vitor.
+-- O nome serve só para conferir o titular informado pela pessoa; nunca vai para o modelo.
+ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS celular_norm text;
+ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS nome text;
+CREATE INDEX IF NOT EXISTS cadastros_celular ON {{schema}}.cadastros (celular_norm);

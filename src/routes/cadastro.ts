@@ -4,7 +4,7 @@ import { consultarCobertura } from '../cobertura.js';
 import { pool } from '../db.js';
 import { cadastrarClientePf } from '../sgp/client.js';
 import { schemaDe } from '../tenants.js';
-import { celularParaSgp, cpfValido, normalizarTexto, soDigitos } from '../util.js';
+import { celularParaSgp, cpfValido, normalizarTelefone, normalizarTexto, soDigitos } from '../util.js';
 
 const Body = z.object({
   cpfcnpj: z.string(),
@@ -76,9 +76,10 @@ export async function rotaCadastro(app: FastifyInstance) {
 
     const registrar = async (status: string, cliente_id: number | null, erro: string | null): Promise<number> => {
       const r = await pool.query<{ id: number }>(
-        `INSERT INTO ${s}.cadastros (canal_id, conversa, cpfcnpj, pop_id, plano, vencimento, status, cliente_id, erro)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-        [canal.id, b.conversa ?? null, cpf, cob.pop_id, plano.nome, b.vencimento, status, cliente_id, erro],
+        `INSERT INTO ${s}.cadastros (canal_id, conversa, cpfcnpj, pop_id, plano, vencimento, status, cliente_id, erro, celular_norm, nome)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        [canal.id, b.conversa ?? null, cpf, cob.pop_id, plano.nome, b.vencimento, status, cliente_id, erro,
+          normalizarTelefone(b.celular), nome],
       );
       return r.rows[0].id;
     };

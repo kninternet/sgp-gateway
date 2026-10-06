@@ -1,22 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { contratosPublicos, gravarCliente, type ContratoPublico } from '../base.js';
+import { clientePublico, contratosPublicos, gravarCliente, type ClientePublico, type ContratoPublico } from '../base.js';
+import { nomesDosPops } from '../pops.js';
 import { config } from '../config.js';
 import { pool } from '../db.js';
 import { chamarSgp } from '../sgp/client.js';
 import { statusCrm, type StatusCrm } from '../sgp/crm.js';
 import { schemaDe, type Canal, type Tenant } from '../tenants.js';
-import { comoLista, comoObjeto, normalizarTelefone, soDigitos } from '../util.js';
+import { comoLista, comoObjeto, normalizarTelefone, soDigitos, variantesTelefone } from '../util.js';
 
 const Body = z
   .object({ cpfcnpj: z.string().optional(), telefone: z.string().optional() })
   .refine((b) => b.cpfcnpj || b.telefone, { message: 'informe cpfcnpj ou telefone' });
 
-interface ClienteResposta {
+interface ClienteResposta extends Partial<ClientePublico> {
   cliente_id: number;
   nome: string;
-  contratos: Array<Partial<ContratoPublico> & { contrato_id: number }>;
+  contratos: Array<Partial<ContratoPublico> & { contrato_id: number; pop_nome?: string | null }>;
   crm: StatusCrm | null;
 }
 
@@ -27,17 +28,14 @@ function docFormatado(d: string): string {
     : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
 }
 
-/** Clientes do SGP para o documento (tenta só dígitos e, se vier vazio, formatado). */
-async function clientesNoSgp(tenant: Tenant, doc: string): Promise<Record<string, unknown>[]> {
-  for (const valor of [doc, docFormatado(doc)]) {
+/**
+ * Clientes do SGP pelo filtro informado, testando cada forma do valor até achar.
+ * Os títulos vêm junto (só para calcular o último pagamento; nunca são gravados).
+ */
+async function clientesNoSgp(tenant: Tenant, campo: 'cpfcnpj' | 'telefone', valores: string[]): Promise<Record<string, unknown>[]> {
+  for (const valor of valores) {
     const resp = comoObjeto(
-      await chamarSgp(
-        tenant,
-        'clientes',
-        { cpfcnpj: valor, omitir_titulos: true, exibir_conexao: true },
-        undefined,
-        config.SGP_IDENTIFICAR_TIMEOUT_MS,
-      ),
+      await chamarSgp(tenant, 'clientes', { [campo]: valor, exibir_conexao: true }, undefined, config.SGP_IDENTIFICAR_TIMEOUT_MS),
     );
     const lista = comoLista(resp.clientes).map(comoObjeto);
     if (lista.length > 0) return lista;
@@ -89,7 +87,7 @@ async function clientesNaBase(
   tenant: Tenant,
   canal: Canal,
   filtro: string,
-  valor: string,
+  valores: string[],
 ): Promise<ClienteResposta[]> {
   const s = schemaDe(tenant);
   const { rows } = await pool.query(
@@ -99,7 +97,7 @@ async function clientesNaBase(
       WHERE ${filtro}
       ORDER BY cl.id, ct.id
       LIMIT 20`,
-    [valor, canal.pops],
+    [valores, canal.pops],
   );
   const porCliente = new Map<number, ClienteResposta>();
   for (const r of rows) {
@@ -115,6 +113,10 @@ async function clientesNaBase(
       vencimento: r.vencimento,
       conexao: null,
       conexao_desde: null,
+      endereco: null,
+      servicos_online: 0,
+      servicos_offline: 0,
+      ultimo_pagamento: null,
     });
   }
   return [...porCliente.values()];
@@ -134,61 +136,65 @@ export async function rotaIdentificar(app: FastifyInstance) {
     const body = Body.parse(req.body);
     const s = schemaDe(tenant);
 
-    let clientes: ClienteResposta[];
-    let fonte: 'sgp' | 'base';
+    let clientes: ClienteResposta[] = [];
+    let fonte: 'sgp' | 'base' = 'sgp';
     let doc: string | null = null;
+    let telefones: string[] = [];
 
-    if (body.cpfcnpj) {
-      doc = soDigitos(body.cpfcnpj);
-      if (doc.length !== 11 && doc.length !== 14) return reply.code(400).send({ erro: 'cpfcnpj_invalido' });
+    // Busca ao vivo no SGP; se ele falhar, ou não conhecer o valor, usa a base própria.
+    const buscar = async (campo: 'cpfcnpj' | 'telefone', valores: string[], filtroBase: string) => {
       try {
-        const doSgp = await clientesNoSgp(tenant, doc);
+        const doSgp = await clientesNoSgp(tenant, campo, valores);
         if (doSgp.length > 0) await atualizarBase(tenant, doSgp);
+        const pops = await nomesDosPops(tenant);
         clientes = doSgp
           .map((cli) => ({
             cliente_id: Number(cli.id),
             nome: String(cli.nome ?? ''),
-            contratos: contratosPublicos(cli, canal.pops),
+            ...clientePublico(cli),
+            contratos: contratosPublicos(cli, canal.pops).map((c) => ({ ...c, pop_nome: pops.get(c.pop_id) ?? null })),
             crm: null,
           }))
           .filter((c) => Number.isSafeInteger(c.cliente_id) && c.contratos.length > 0);
         fonte = 'sgp';
-        // SGP não conhece o documento: confere a base antes de dizer que não existe.
         if (doSgp.length === 0) {
-          const daBase = await clientesNaBase(tenant, canal, 'cl.cpfcnpj = $1', doc);
-          if (daBase.length > 0) {
-            clientes = daBase;
-            fonte = 'base';
-          }
+          const daBase = await clientesNaBase(tenant, canal, filtroBase, valores);
+          if (daBase.length > 0) { clientes = daBase; fonte = 'base'; }
         }
       } catch (e) {
         req.log.warn({ err: (e as Error).message }, 'identificação: SGP indisponível, usando a base');
-        clientes = await clientesNaBase(tenant, canal, 'cl.cpfcnpj = $1', doc);
+        clientes = await clientesNaBase(tenant, canal, filtroBase, valores);
         fonte = 'base';
       }
+    };
+
+    if (body.cpfcnpj) {
+      doc = soDigitos(body.cpfcnpj);
+      if (doc.length !== 11 && doc.length !== 14) return reply.code(400).send({ erro: 'cpfcnpj_invalido' });
+      await buscar('cpfcnpj', [doc, docFormatado(doc)], 'cl.cpfcnpj = ANY($1::text[])');
     } else {
+      // Telefone só em canal com número verificado (WhatsApp); no site qualquer um digita qualquer número.
       if (!canal.permite_telefone) return reply.code(403).send({ erro: 'telefone_nao_permitido_neste_canal' });
       const tel = normalizarTelefone(body.telefone);
       if (!tel) return reply.code(400).send({ erro: 'telefone_invalido' });
-      clientes = await clientesNaBase(
-        tenant,
-        canal,
-        `cl.id IN (SELECT cliente_id FROM ${s}.contatos WHERE valor_norm = $1)`,
-        tel,
-      );
-      fonte = 'base';
+      telefones = variantesTelefone(tel);
+      await buscar('telefone', telefones, `cl.id IN (SELECT cliente_id FROM ${s}.contatos WHERE valor_norm = ANY($1::text[]))`);
     }
 
     // Último cadastro feito pelo Vitor para este documento (lead no CRM, ainda sem contrato ou não).
-    let cadastro: { lead_id: number; cliente_id: number; criado_em: string; crm: StatusCrm | null } | null = null;
-    if (doc) {
-      const { rows } = await pool.query<{ lead_id: number; cliente_id: number; criado_em: Date }>(
-        `SELECT id AS lead_id, cliente_id, criado_em FROM ${s}.cadastros
-          WHERE cpfcnpj = $1 AND status = 'ok' AND cliente_id IS NOT NULL ORDER BY id DESC LIMIT 1`,
-        [doc],
+    let cadastro: { lead_id: number; cliente_id: number; nome: string | null; criado_em: string; crm: StatusCrm | null } | null = null;
+    if (doc || telefones.length) {
+      const { rows } = await pool.query<{ lead_id: number; cliente_id: number; nome: string | null; criado_em: Date }>(
+        `SELECT id AS lead_id, cliente_id, nome, criado_em FROM ${s}.cadastros
+          WHERE ${doc ? 'cpfcnpj = $1' : 'celular_norm = ANY($1::text[])'}
+            AND status = 'ok' AND cliente_id IS NOT NULL ORDER BY id DESC LIMIT 1`,
+        [doc ?? telefones],
       );
       if (rows[0]) {
-        cadastro = { lead_id: rows[0].lead_id, cliente_id: rows[0].cliente_id, criado_em: rows[0].criado_em.toISOString(), crm: null };
+        cadastro = {
+          lead_id: rows[0].lead_id, cliente_id: rows[0].cliente_id, nome: rows[0].nome,
+          criado_em: rows[0].criado_em.toISOString(), crm: null,
+        };
       }
     }
 
