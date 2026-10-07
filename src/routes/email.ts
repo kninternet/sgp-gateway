@@ -7,11 +7,13 @@ import { z } from 'zod';
 import { pool } from '../db.js';
 import { contatoDoContrato, faturasAbertas, mascararEmail } from '../regua/dados.js';
 import { emailFatura, emailLista } from '../regua/modelos.js';
+import { emailFaturaArquivo } from '../regua/arquivo.js';
 import { enviarEmail, smtpConfigurado } from '../regua/smtp.js';
 import { schemaDe } from '../tenants.js';
 import { contratoPermitido } from '../trava.js';
 
-const Fatura = z.object({ contrato_id: z.coerce.number().int().positive(), fatura_id: z.coerce.number().int().positive() });
+// Sem fatura_id: a próxima fatura em aberto (a de vencimento mais antigo).
+const Fatura = z.object({ contrato_id: z.coerce.number().int().positive(), fatura_id: z.coerce.number().int().positive().optional() });
 const Lista = z.object({ contrato_id: z.coerce.number().int().positive() });
 
 export async function rotaEmail(app: FastifyInstance) {
@@ -38,12 +40,15 @@ export async function rotaEmail(app: FastifyInstance) {
     const b = Fatura.parse(req.body);
     const ok = await preparar(req, reply, b.contrato_id);
     if (!ok) return reply;
-    const f = (await faturasAbertas(ok.tenant, b.contrato_id)).find((x) => x.fatura_id === b.fatura_id);
-    if (!f) return reply.code(404).send({ erro: 'fatura_nao_encontrada' });
-    const m = emailFatura('FATURA', ok.c, f);
+    const abertas = await faturasAbertas(ok.tenant, b.contrato_id);
+    const f = b.fatura_id
+      ? abertas.find((x) => x.fatura_id === b.fatura_id)
+      : [...abertas].sort((x, y) => x.vencimento.localeCompare(y.vencimento))[0];
+    if (!f) return reply.code(404).send({ erro: b.fatura_id ? 'fatura_nao_encontrada' : 'sem_faturas_em_aberto' });
+    const m = emailFaturaArquivo(ok.tenant, ok.c, f) ?? emailFatura('FATURA', ok.c, f);
     await enviarEmail(ok.tenant, ok.c.email!, m.assunto, m.html, m.texto);
-    await registrar(ok.tenant, 'FATURA', b.contrato_id, b.fatura_id, ok.c.email!);
-    return { ok: true, email: mascararEmail(ok.c.email!) };
+    await registrar(ok.tenant, 'FATURA', b.contrato_id, f.fatura_id, ok.c.email!);
+    return { ok: true, email: mascararEmail(ok.c.email!), vencimento: f.vencimento, valor: f.valor };
   });
 
   app.post('/v1/email/lista', async (req, reply) => {
