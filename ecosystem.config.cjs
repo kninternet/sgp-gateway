@@ -16,5 +16,14 @@ module.exports = {
       cron_restart: '0 3 * * *',
       autorestart: false,
     },
+    {
+      // Régua de e-mails (boas-vindas e cobrança): todo dia às 8h, depois do sync.
+      name: 'sgp-gateway-regua',
+      script: 'dist/src/regua.js',
+      node_args: '--env-file=.env',
+      env: { NODE_ENV: 'production', TZ: 'America/Sao_Paulo' },
+      cron_restart: '0 8 * * *',
+      autorestart: false,
+    },
   ],
 };

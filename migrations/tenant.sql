@@ -95,3 +95,27 @@ CREATE INDEX IF NOT EXISTS cadastros_canal_ts ON {{schema}}.cadastros (canal_id,
 ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS celular_norm text;
 ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS nome text;
 CREATE INDEX IF NOT EXISTS cadastros_celular ON {{schema}}.cadastros (celular_norm);
+
+-- Régua de e-mails: cada etapa de cada fatura é enviada uma única vez.
+CREATE TABLE IF NOT EXISTS {{schema}}.regua_envios (
+  id          bigserial PRIMARY KEY,
+  etapa       text NOT NULL,                 -- PRE_FATURA_D5 | VENCE_AMANHA | VENCE_HOJE | ATRASO_D2 | PRE_BLOQUEIO_D4 | BOAS_VINDAS | FATURA | LISTA
+  contrato_id bigint NOT NULL,
+  fatura_id   bigint,                        -- nulo em BOAS_VINDAS e LISTA
+  email       text NOT NULL,
+  status      text NOT NULL,                 -- enviado | erro
+  erro        text,
+  origem      text NOT NULL DEFAULT 'regua', -- regua | manual
+  enviado_em  timestamptz NOT NULL DEFAULT now()
+);
+-- Trava de duplicidade só para a régua automática (envios manuais podem se repetir).
+CREATE UNIQUE INDEX IF NOT EXISTS regua_envios_unico ON {{schema}}.regua_envios (etapa, contrato_id, coalesce(fatura_id, 0))
+  WHERE origem = 'regua' AND status = 'enviado';
+CREATE INDEX IF NOT EXISTS regua_envios_data ON {{schema}}.regua_envios (enviado_em);
+
+-- Contratos já vistos ativos: o primeiro registro de um contrato dispara as boas-vindas.
+CREATE TABLE IF NOT EXISTS {{schema}}.regua_ativos (
+  contrato_id   bigint PRIMARY KEY,
+  visto_em      timestamptz NOT NULL DEFAULT now(),
+  boas_vindas   text NOT NULL                -- enviado | semeado (já ativo no início da régua) | sem_email | erro
+);

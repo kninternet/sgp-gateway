@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20.6" },
+  "engines": {
+    "node": ">=20.6"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch --env-file=.env src/server.ts",
@@ -11,17 +13,20 @@
     "migrate": "node --env-file=.env dist/scripts/migrate.js",
     "sync": "node --env-file=.env dist/src/sync.js",
     "canal:add": "node --env-file=.env dist/scripts/canal.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "regua": "node --env-file=.env dist/src/regua.js"
   },
   "dependencies": {
     "fastify": "^5.2.0",
     "pg": "^8.13.0",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "nodemailer": "^6.9.16"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@types/nodemailer": "^6.4.17"
   }
 }

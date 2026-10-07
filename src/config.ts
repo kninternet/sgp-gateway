@@ -14,6 +14,8 @@ const schema = z.object({
   SGP_DB_URL: z.string().optional().transform((v) => (v && v.trim() ? v.trim() : undefined)),
   // Tempo máximo da consulta sob demanda antes de cair para a base própria.
   SGP_IDENTIFICAR_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
+  // Intervalo entre e-mails da régua (respeita o limite de envio do SMTP).
+  REGUA_INTERVALO_MS: z.coerce.number().int().nonnegative().default(4000),
 });
 
 export const config = schema.parse(process.env);

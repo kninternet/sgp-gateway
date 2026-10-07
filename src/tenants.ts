@@ -22,6 +22,7 @@ export interface Canal {
   pops: number[];
   permite_telefone: boolean;
   permite_cadastro: boolean;
+  permite_email: boolean;
 }
 
 const SCHEMA_RE = /^[a-z_][a-z0-9_]{0,40}$/;
