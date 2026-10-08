@@ -89,10 +89,15 @@ export interface SessaoRadius {
  */
 export async function sessoesRadius(login: string, limite = 8): Promise<SessaoRadius[] | null> {
   if (!pool || !login) return null;
+  const cliente = await pool.connect().catch(() => null);
+  if (!cliente) return null;
   try {
-    const { rows } = await pool.query(
+    // A radacct tem milhões de linhas: filtra pelo login primeiro (a ordenação por expressão impede o
+    // banco de varrer o índice de datas) e dá 8 s só para esta consulta, para o primeiro acesso com cache frio.
+    await cliente.query('SET statement_timeout = 8000');
+    const { rows } = await cliente.query(
       `SELECT acctstarttime, acctstoptime, framedipaddress::text AS ip, nasipaddress::text AS nas, acctterminatecause
-         FROM radacct WHERE username = $1 ORDER BY acctstarttime DESC NULLS LAST LIMIT $2`,
+         FROM radacct WHERE username = $1 ORDER BY acctstarttime + interval '0' DESC NULLS LAST LIMIT $2`,
       [login, Math.min(Math.max(limite, 1), 20)],
     );
     return rows.map((r) => ({
@@ -104,5 +109,8 @@ export async function sessoesRadius(login: string, limite = 8): Promise<SessaoRa
     }));
   } catch {
     return null;
+  } finally {
+    await cliente.query('RESET statement_timeout').catch(() => {});
+    cliente.release();
   }
 }
