@@ -119,3 +119,21 @@ CREATE TABLE IF NOT EXISTS {{schema}}.regua_ativos (
   visto_em      timestamptz NOT NULL DEFAULT now(),
   boas_vindas   text NOT NULL                -- enviado | semeado (já ativo no início da régua) | sem_email | erro
 );
+
+-- Formulário de cadastro: origem, tipo de pessoa e se o e-mail foi confirmado por código.
+ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS origem text;
+ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS tipo_pessoa text;
+ALTER TABLE {{schema}}.cadastros ADD COLUMN IF NOT EXISTS email_verificado boolean;
+
+-- Códigos de verificação de e-mail (formulário e Vitor). Guarda só o hash do código.
+CREATE TABLE IF NOT EXISTS {{schema}}.email_codigos (
+  id           bigserial PRIMARY KEY,
+  email        text NOT NULL,                 -- minúsculo
+  codigo_hash  text NOT NULL,
+  canal_id     int,
+  criado_em    timestamptz NOT NULL DEFAULT now(),
+  expira_em    timestamptz NOT NULL,
+  tentativas   int NOT NULL DEFAULT 0,
+  verificado_em timestamptz
+);
+CREATE INDEX IF NOT EXISTS email_codigos_email ON {{schema}}.email_codigos (email, criado_em DESC);

@@ -7,6 +7,7 @@ import { pool } from './db.js';
 import { rotaCadastro } from './routes/cadastro.js';
 import { rotaCobertura } from './routes/cobertura.js';
 import { rotaEmail } from './routes/email.js';
+import { rotaVerificacao } from './routes/verificacao.js';
 import { rotaFaturas } from './routes/faturas.js';
 import { rotaIdentificar } from './routes/identificar.js';
 import { rotaPix } from './routes/pix.js';
@@ -47,6 +48,7 @@ app.register(async (rotas) => {
   await rotas.register(rotaCobertura);
   await rotas.register(rotaCadastro);
   await rotas.register(rotaEmail);
+  await rotas.register(rotaVerificacao);
 });
 
 app.setErrorHandler((err, req, reply) => {

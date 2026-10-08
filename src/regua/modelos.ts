@@ -212,3 +212,35 @@ ${canal('E-mail', EMAIL_ATENDIMENTO, 'mailto:' + EMAIL_ATENDIMENTO, 'Enviar e-ma
     texto: `Oi, ${nome}! Aqui é o Vitor, da Viva Net. Seja muito bem-vindo(a)!\n\nPlano: ${plano}\nVencimento: ${c.vencimento_dia ? 'todo dia ' + c.vencimento_dia : '-'}\n\nVivanet Chat: ${CHAT}\nWhatsApp: ${WHATSAPP.texto}\nE-mail: ${EMAIL_ATENDIMENTO}${RODAPE_TXT}`,
   };
 }
+// ---------------------------------------------------------------- código de verificação de e-mail
+
+export function emailCodigo(codigo: string) {
+  const assunto = `Seu código de verificação Viva Net: ${codigo}`;
+  const corpo =
+    p('Olá! Use o código abaixo para confirmar o seu e-mail na Viva Net:') +
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;"><tr>
+<td style="background:${COR.caixa};border:1px dashed ${COR.indigo};border-radius:8px;padding:16px 28px;font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:700;letter-spacing:8px;color:${COR.tinta};">${esc(codigo)}</td>
+</tr></table>` +
+    p('O código vale por 15 minutos. Se não foi você que pediu, pode ignorar este e-mail.', `color:${COR.cinza};font-size:14px;`);
+  return {
+    assunto,
+    html: layout(assunto, 'Confirmação de e-mail', COR.indigo, corpo, `Código: ${codigo}`),
+    texto: `Seu código de verificação Viva Net: ${codigo}\n\nO código vale por 15 minutos. Se não foi você que pediu, ignore este e-mail.${RODAPE_TXT}`,
+  };
+}
+
+// ---------------------------------------------------------------- cópia interna do cadastro (para o atendimento)
+
+export function emailCopiaCadastro(titulo: string, linhas: Array<[string, string | number | null | undefined]>, link?: string | null) {
+  const tabela = linhas
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `<tr><td style="background:#F5F5FA;padding:6px 10px;border:1px solid #E2E2F0;"><b>${esc(k)}</b></td><td style="padding:6px 10px;border:1px solid #E2E2F0;">${esc(v)}</td></tr>`)
+    .join('');
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1E1F33;">
+<p style="font-size:16px;"><b>${esc(titulo)}</b></p>
+<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${tabela}</table>
+${link ? `<p><a href="${esc(link)}">Abrir a conversa no Chatwoot</a></p>` : ''}
+<p style="color:#5B5C75;font-size:12px;">Enviado automaticamente pelo gateway Viva Net.</p></div>`;
+  const texto = `${titulo}\n\n${linhas.filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => `${k}: ${v}`).join('\n')}${link ? `\n\nConversa: ${link}` : ''}`;
+  return { assunto: titulo, html, texto };
+}

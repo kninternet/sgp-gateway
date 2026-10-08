@@ -18,6 +18,18 @@ export function variantesTelefone(tel: string): string[] {
   return [d];
 }
 
+export function cnpjValido(v: string): boolean {
+  const d = soDigitos(v);
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const calc = (n: number) => {
+    let soma = 0, pos = n - 7;
+    for (let i = n; i >= 1; i--) { soma += Number(d[n - i]) * pos--; if (pos < 2) pos = 9; }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(12) === Number(d[12]) && calc(13) === Number(d[13]);
+}
+
 /** Data de hoje em America/Sao_Paulo, formato AAAA-MM-DD. */
 export function hojeSP(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
