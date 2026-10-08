@@ -8,6 +8,7 @@ import { rotaCadastro } from './routes/cadastro.js';
 import { rotaCobertura } from './routes/cobertura.js';
 import { rotaEmail } from './routes/email.js';
 import { rotaVerificacao } from './routes/verificacao.js';
+import { rotaPainel } from './routes/painel.js';
 import { rotaFaturas } from './routes/faturas.js';
 import { rotaIdentificar } from './routes/identificar.js';
 import { rotaPix } from './routes/pix.js';
@@ -49,6 +50,7 @@ app.register(async (rotas) => {
   await rotas.register(rotaCadastro);
   await rotas.register(rotaEmail);
   await rotas.register(rotaVerificacao);
+  await rotas.register(rotaPainel);
 });
 
 app.setErrorHandler((err, req, reply) => {

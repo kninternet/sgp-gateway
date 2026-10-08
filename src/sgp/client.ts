@@ -11,6 +11,9 @@ const ROTAS = {
   fatura2via: '/api/ura/fatura2via/',
   pix: '/api/ura/pagamento/pix/:id',
   pops: '/api/ura/pops/',
+  verificaacesso: '/api/ura/verificaacesso/',
+  ocorrencias: '/api/ura/ocorrencia/list/',
+  listacontrato: '/api/ura/listacontrato/',
 } as const;
 
 export type RotaSgp = keyof typeof ROTAS;
@@ -102,3 +105,28 @@ export async function cadastrarCliente(tenant: Tenant, tipo: 'F' | 'J', dados: R
 }
 
 export const cadastrarClientePf = (tenant: Tenant, dados: Record<string, unknown>) => cadastrarCliente(tenant, 'F', dados);
+
+/** Tipos de documento do contrato que o SGP imprime em PDF (lista fechada). */
+export const TIPOS_DOCUMENTO = ['contrato', 'termoadesao', 'contratofidelidade', 'cancelamento', 'termocomodato'] as const;
+export type TipoDocumento = (typeof TIPOS_DOCUMENTO)[number];
+
+/** PDF de um documento do contrato. A rota do SGP é GET com os campos no corpo. */
+export async function pdfContrato(tenant: Tenant, tipo: TipoDocumento, contratoId: number): Promise<Buffer> {
+  const corpo = new URLSearchParams({ app: tenant.sgp_app, token: tokenDoTenant(tenant.sgp_token_env), contrato: String(contratoId) });
+  let res: Response;
+  try {
+    res = await fetch(new URL(`/api/contratos/print/${tipo}`, tenant.sgp_base_url), {
+      method: 'GET',
+      body: corpo,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      signal: AbortSignal.timeout(config.SGP_TIMEOUT_MS),
+      // @ts-expect-error: o fetch do Node aceita corpo em GET com duplex
+      duplex: 'half',
+    });
+  } catch (e) {
+    throw new SgpError(`SGP pdf ${tipo}: falha de rede (${(e as Error).name})`);
+  }
+  if (!res.ok) throw new SgpError(`SGP pdf ${tipo}: HTTP ${res.status}`, res.status);
+  if (!(res.headers.get('content-type') ?? '').includes('pdf')) throw new SgpError(`SGP pdf ${tipo}: não é PDF`);
+  return Buffer.from(await res.arrayBuffer());
+}

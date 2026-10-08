@@ -20,7 +20,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
   }
 
   const { rows } = await pool.query(
-    `SELECT c.id, c.tenant_id, c.nome, c.pops, c.permite_telefone, c.permite_cadastro, c.permite_email,
+    `SELECT c.id, c.tenant_id, c.nome, c.pops, c.permite_telefone, c.permite_cadastro, c.permite_email, c.permite_painel,
             t.id AS t_id, t.nome AS t_nome, t.sgp_base_url, t.sgp_app, t.sgp_token_env,
             t.schema_name, t.pops_permitidos, t.empresa_cnpj, t.gerar_os_2via, t.link_boleto_base,
             t.sgp_write_app, t.sgp_write_token_env
@@ -64,6 +64,7 @@ export async function autenticar(req: FastifyRequest, reply: FastifyReply) {
       permite_telefone: r.permite_telefone,
       permite_cadastro: r.permite_cadastro,
       permite_email: r.permite_email,
+      permite_painel: r.permite_painel,
     },
   };
   req.auditoria = {};

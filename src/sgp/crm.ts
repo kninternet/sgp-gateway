@@ -74,3 +74,35 @@ export async function statusCrm(clienteIds: number[]): Promise<Map<number, Statu
 export async function encerrarCrm() {
   await pool?.end();
 }
+
+export interface SessaoRadius {
+  inicio: string | null;
+  fim: string | null;
+  ip: string | null;
+  nas: string | null;
+  causa: string | null;
+}
+
+/**
+ * Últimas sessões de acesso (PPPoE) do login, da tabela radacct do RADIUS do SGP.
+ * SOMENTE radacct: a radcheck guarda as senhas PPPoE e nunca é consultada.
+ */
+export async function sessoesRadius(login: string, limite = 8): Promise<SessaoRadius[] | null> {
+  if (!pool || !login) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT acctstarttime, acctstoptime, framedipaddress::text AS ip, nasipaddress::text AS nas, acctterminatecause
+         FROM radacct WHERE username = $1 ORDER BY acctstarttime DESC NULLS LAST LIMIT $2`,
+      [login, Math.min(Math.max(limite, 1), 20)],
+    );
+    return rows.map((r) => ({
+      inicio: r.acctstarttime ? new Date(r.acctstarttime).toISOString() : null,
+      fim: r.acctstoptime ? new Date(r.acctstoptime).toISOString() : null,
+      ip: r.ip ?? null,
+      nas: r.nas ?? null,
+      causa: r.acctterminatecause?.trim() || null,
+    }));
+  } catch {
+    return null;
+  }
+}
