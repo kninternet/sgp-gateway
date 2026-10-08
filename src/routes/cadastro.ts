@@ -94,27 +94,42 @@ export async function rotaCadastro(app: FastifyInstance) {
       );
       const leadId = r.rows[0].id;
       // Cópia ao atendimento: título no padrão "Novo Cadastro - CPF|CNPJ[ Duplicado] - Nome - Origem[ - E-mail não verificado]".
-      const doc = pj ? 'CNPJ' : 'CPF';
-      const titulo = `Novo Cadastro - ${doc}${status === 'cpf_existente' ? ' Duplicado' : ''} - ${nome} - ${NOME_ORIGEM[origem]}`
-        + (verificado ? '' : ' - E-mail não verificado');
-      const resultado = status === 'ok' ? 'Cliente criado no CRM do SGP (Em análise)'
-        : status === 'cpf_existente' ? `Não criado: ${doc} já cadastrado no SGP` : `Não criado: SGP recusou (${erro ?? ''})`;
-      const endereco = [[cob.endereco.logradouro, b.numero].join(', '), b.complemento, cob.endereco.bairro,
-        `${cob.endereco.cidade}/${cob.endereco.uf}`].filter(Boolean).join(' - ');
-      const conv = b.conversa && /^\d+$/.test(b.conversa) ? `https://chat.vivanettelecom.com.br/app/accounts/1/conversations/${b.conversa}` : null;
-      copiaAtendimento(tenant, req.log, titulo, [
-        ['Resultado', resultado],
-        ['Nome', nome], [doc, fmtDoc(cpf)],
-        ['E-mail', `${b.email} (${verificado ? 'confirmado por código' : 'não confirmado'})`],
-        ['Celular', b.celular ? soDigitos(b.celular) : null],
-        ['CEP', cob.endereco.cep], ['Endereço de instalação', endereco],
-        ['Plano', `${plano.nome} · R$ ${plano.valor.toFixed(2).replace('.', ',')}`],
-        ['Vencimento', `Dia ${b.vencimento}`],
-        ['POP', cob.pop_id], ['SGP Cliente ID', cliente_id], ['Lead ID', leadId],
-        ['Origem', NOME_ORIGEM[origem]],
-        ...Object.entries(b.utm ?? {}).map(([k, v]) => [k, v] as [string, string]),
-        ['Data', new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }).format(new Date())],
-      ], conv);
+      // No formulário, o código do e-mail é pedido logo após o envio: a cópia espera 45 s e confere de novo.
+      const enviarCopia = (emailOk: boolean) => {
+        const doc = pj ? 'CNPJ' : 'CPF';
+        const titulo = `Novo Cadastro - ${doc}${status === 'cpf_existente' ? ' Duplicado' : ''} - ${nome} - ${NOME_ORIGEM[origem]}`
+          + (emailOk ? '' : ' - E-mail não verificado');
+        const resultado = status === 'ok' ? 'Cliente criado no CRM do SGP (Em análise)'
+          : status === 'cpf_existente' ? `Não criado: ${doc} já cadastrado no SGP` : `Não criado: SGP recusou (${erro ?? ''})`;
+        const endereco = [[cob.endereco.logradouro, b.numero].join(', '), b.complemento, cob.endereco.bairro,
+          `${cob.endereco.cidade}/${cob.endereco.uf}`].filter(Boolean).join(' - ');
+        const conv = b.conversa && /^\d+$/.test(b.conversa) ? `https://chat.vivanettelecom.com.br/app/accounts/1/conversations/${b.conversa}` : null;
+        copiaAtendimento(tenant, req.log, titulo, [
+          ['Resultado', resultado],
+          ['Nome', nome], [doc, fmtDoc(cpf)],
+          ['E-mail', `${b.email} (${emailOk ? 'confirmado por código' : 'não confirmado'})`],
+          ['Celular', b.celular ? soDigitos(b.celular) : null],
+          ['CEP', cob.endereco.cep], ['Endereço de instalação', endereco],
+          ['Plano', `${plano.nome} · R$ ${plano.valor.toFixed(2).replace('.', ',')}`],
+          ['Vencimento', `Dia ${b.vencimento}`],
+          ['POP', cob.pop_id], ['SGP Cliente ID', cliente_id], ['Lead ID', leadId],
+          ['Origem', NOME_ORIGEM[origem]],
+          ...Object.entries(b.utm ?? {}).map(([k, v]) => [k, v] as [string, string]),
+          ['Data', new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }).format(new Date())],
+        ], conv);
+      };
+      if (origem === 'formulario' && !verificado) {
+        setTimeout(async () => {
+          let ok = false;
+          try {
+            ok = await emailVerificado(tenant, b.email);
+            if (ok) await pool.query(`UPDATE ${s}.cadastros SET email_verificado = true WHERE id = $1`, [leadId]);
+          } catch { /* segue como não verificado */ }
+          enviarCopia(ok);
+        }, 45_000).unref();
+      } else {
+        enviarCopia(verificado);
+      }
       return leadId;
     };
 
