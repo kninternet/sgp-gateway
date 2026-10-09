@@ -22,7 +22,7 @@ interface ClienteResposta extends Partial<ClientePublico> {
 }
 
 /** 11 dígitos → NNN.NNN.NNN-NN; 14 → NN.NNN.NNN/NNNN-NN. */
-function docFormatado(d: string): string {
+export function docFormatado(d: string): string {
   return d.length === 11
     ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
     : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
@@ -32,7 +32,7 @@ function docFormatado(d: string): string {
  * Clientes do SGP pelo filtro informado, testando cada forma do valor até achar.
  * Os títulos vêm junto (só para calcular o último pagamento; nunca são gravados).
  */
-async function clientesNoSgp(tenant: Tenant, campo: 'cpfcnpj' | 'telefone', valores: string[]): Promise<Record<string, unknown>[]> {
+export async function clientesNoSgp(tenant: Tenant, campo: 'cpfcnpj' | 'telefone', valores: string[]): Promise<Record<string, unknown>[]> {
   for (const valor of valores) {
     const resp = comoObjeto(
       await chamarSgp(tenant, 'clientes', { [campo]: valor, exibir_conexao: true }, undefined, config.SGP_IDENTIFICAR_TIMEOUT_MS),
@@ -47,7 +47,7 @@ async function clientesNoSgp(tenant: Tenant, campo: 'cpfcnpj' | 'telefone', valo
  * Atualiza a base própria com o que veio do SGP: grava os contratos dos POPs do tenant
  * e remove, só deste cliente, os contratos que saíram desses POPs.
  */
-async function atualizarBase(tenant: Tenant, clientes: Record<string, unknown>[]) {
+export async function atualizarBase(tenant: Tenant, clientes: Record<string, unknown>[]) {
   const s = schemaDe(tenant);
   const pops = tenant.pops_permitidos;
   const run = randomUUID();

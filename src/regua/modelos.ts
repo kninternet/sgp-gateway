@@ -229,6 +229,22 @@ export function emailCodigo(codigo: string) {
   };
 }
 
+/** Código de acesso à Área do Cliente (login no site). Texto próprio: o cliente está entrando, não confirmando e-mail. */
+export function emailCodigoArea(codigo: string) {
+  const assunto = `Seu código de acesso à Área do Cliente Viva Net: ${codigo}`;
+  const corpo =
+    p('Olá! Use o código abaixo para entrar na Área do Cliente Viva Net e ver suas faturas:') +
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;"><tr>
+<td style="background:${COR.caixa};border:1px dashed ${COR.indigo};border-radius:8px;padding:16px 28px;font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:700;letter-spacing:8px;color:${COR.tinta};">${esc(codigo)}</td>
+</tr></table>` +
+    p('O código vale por 15 minutos. Se não foi você que pediu, ignore este e-mail. A Viva Net nunca pede esse código por telefone ou mensagem.', `color:${COR.cinza};font-size:14px;`);
+  return {
+    assunto,
+    html: layout(assunto, 'Acesso à Área do Cliente', COR.indigo, corpo, `Código: ${codigo}`),
+    texto: `Seu código de acesso à Área do Cliente Viva Net: ${codigo}\n\nO código vale por 15 minutos. Se não foi você que pediu, ignore este e-mail. A Viva Net nunca pede esse código por telefone ou mensagem.${RODAPE_TXT}`,
+  };
+}
+
 // ---------------------------------------------------------------- cópia interna do cadastro (para o atendimento)
 
 export function emailCopiaCadastro(titulo: string, linhas: Array<[string, string | number | null | undefined]>, link?: string | null) {

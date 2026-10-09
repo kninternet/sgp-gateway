@@ -24,6 +24,7 @@ export interface Canal {
   permite_cadastro: boolean;
   permite_email: boolean;
   permite_painel: boolean;
+  permite_area: boolean;
 }
 
 const SCHEMA_RE = /^[a-z_][a-z0-9_]{0,40}$/;
