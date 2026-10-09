@@ -44,16 +44,20 @@ async function contratosNaBase(tenant: Tenant, canal: Canal, doc: string) {
   return rows;
 }
 
-/** Contratos do documento nos POPs do canal e o e-mail do cadastro. Busca no SGP se a base não tiver. */
-async function titular(tenant: Tenant, canal: Canal, doc: string, buscarNoSgp: boolean): Promise<Titular | null> {
-  let rows = await contratosNaBase(tenant, canal, doc);
-  if (rows.length === 0 && buscarNoSgp) {
-    const clientes = await clientesNoSgp(tenant, 'cpfcnpj', [doc, docFormatado(doc)]);
-    if (clientes.length > 0) {
-      await atualizarBase(tenant, clientes);
-      rows = await contratosNaBase(tenant, canal, doc);
+/**
+ * Contratos do documento nos POPs do canal e o e-mail do cadastro.
+ * Com atualizarDoSgp, relê o cliente no SGP antes (e-mail e contratos do momento); se o SGP falhar, usa a base.
+ */
+async function titular(tenant: Tenant, canal: Canal, doc: string, atualizarDoSgp: boolean): Promise<Titular | null> {
+  if (atualizarDoSgp) {
+    try {
+      const clientes = await clientesNoSgp(tenant, 'cpfcnpj', [doc, docFormatado(doc)]);
+      if (clientes.length > 0) await atualizarBase(tenant, clientes);
+    } catch {
+      // SGP indisponível: segue com o que estiver na base própria.
     }
   }
+  const rows = await contratosNaBase(tenant, canal, doc);
   if (rows.length === 0) return null;
 
   let email: string | null = null;
