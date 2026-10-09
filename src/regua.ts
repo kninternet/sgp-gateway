@@ -25,6 +25,8 @@ const valorArg = (nome: string) => { const i = args.indexOf(nome); return i >= 0
 const TESTE_PARA = valorArg('--teste');
 const TESTE_CONTRATO = Number(valorArg('--contrato') || 0);
 
+// Data de corte (AAAA-MM-DD): faturas que vencem antes dela ficam fora da régua de cobrança.
+const VENCIMENTO_MINIMO = /^\d{4}-\d{2}-\d{2}$/.test(process.env.REGUA_VENCIMENTO_MINIMO ?? '') ? process.env.REGUA_VENCIMENTO_MINIMO! : '';
 const ATIVO = `trim(status) IN ('Ativo', 'Ativo V. Reduzida')`;
 const COBRAVEL = `trim(status) IN ('Ativo', 'Ativo V. Reduzida', 'Suspenso')`;
 const ETAPA_POR_DIA = new Map(Object.entries(DIAS_DA_ETAPA).map(([e, d]) => [d, e as EtapaRegua]));
@@ -100,7 +102,10 @@ async function cobranca(t: Tenant, resumo: Record<string, number>) {
     const id = Number(r.id);
     let faturas;
     try { faturas = await faturasAbertas(t, id); } catch { resumo.erros_sgp = (resumo.erros_sgp ?? 0) + 1; continue; }
-    const doDia = faturas.map((f) => ({ f, etapa: ETAPA_POR_DIA.get(diasEntre(f.vencimento, hoje)) })).filter((x) => x.etapa);
+    const doDia = faturas
+      .filter((f) => !VENCIMENTO_MINIMO || f.vencimento >= VENCIMENTO_MINIMO)
+      .map((f) => ({ f, etapa: ETAPA_POR_DIA.get(diasEntre(f.vencimento, hoje)) }))
+      .filter((x) => x.etapa);
     if (!doDia.length) continue;
     const c = await contatoDoContrato(t, id);
     if (!c?.email) continue;
@@ -147,7 +152,7 @@ async function main() {
     const resumo: Record<string, number> = {};
     await boasVindas(t, resumo);
     await cobranca(t, resumo);
-    console.log(`[${t.id}] ${SIMULAR ? 'SIMULAÇÃO ' : ''}${hojeSP()}`, JSON.stringify(resumo));
+    console.log(`[${t.id}] ${SIMULAR ? 'SIMULAÇÃO ' : ''}${hojeSP()}${VENCIMENTO_MINIMO ? ` (vencimentos a partir de ${VENCIMENTO_MINIMO})` : ''}`, JSON.stringify(resumo));
   }
 }
 
