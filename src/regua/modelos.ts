@@ -260,3 +260,58 @@ ${link ? `<p><a href="${esc(link)}">Abrir a conversa no Chatwoot</a></p>` : ''}
   const texto = `${titulo}\n\n${linhas.filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => `${k}: ${v}`).join('\n')}${link ? `\n\nConversa: ${link}` : ''}`;
   return { assunto: titulo, html, texto };
 }
+
+// ---------------------------------------------------------------- comunicado de bloqueio (envio avulso, src/comunicado.ts)
+
+const AREA_CLIENTE = 'https://area.vivanettelecom.com.br/?utm_source=email&utm_medium=comunicado&utm_campaign=bloqueio';
+const totalFaturas = (fs: FaturaEmail[]) => fs.reduce((s, f) => s + f.valor, 0);
+const qtdFaturas = (n: number) => (n === 1 ? 'uma fatura em aberto' : `${n} faturas em aberto`);
+
+/** Até 6 faturas, cada uma com boleto, PIX copia e cola e linha digitável. */
+function blocoFaturas(faturas: FaturaEmail[], cor: string) {
+  const lista = faturas.slice(0, 6).map((f, i) =>
+    (i > 0 ? `<div style="border-top:1px solid ${COR.linha};margin:22px 0;"></div>` : '') +
+    caixaFatura(f, cor, 'Vencimento original') + pagamento(f, cor)).join('');
+  const resto = faturas.length > 6
+    ? p(`Há mais ${faturas.length - 6} fatura(s) em aberto. Veja todas na <a href="${AREA_CLIENTE}" style="color:${COR.indigo};font-weight:700;">Área do Cliente</a>.`, `color:${COR.cinza};font-size:14px;`)
+    : '';
+  return lista + resto;
+}
+
+function textoFaturas(faturas: FaturaEmail[]) {
+  return faturas.slice(0, 6).map(textoPagamento).join('\n\n') + (faturas.length > 6 ? `\n\nHá mais ${faturas.length - 6} fatura(s). Veja todas na Área do Cliente: ${AREA_CLIENTE}` : '');
+}
+
+/** Contrato já suspenso: informa a suspensão e envia as faturas para religar. */
+export function emailComunicadoSuspenso(c: ContatoContrato, faturas: FaturaEmail[]) {
+  const nome = esc(primeiroNome(c.nome));
+  const assunto = 'Viva Net: seu serviço está suspenso. Regularize para religar';
+  const resumo = `${qtdFaturas(faturas.length)} no total de ${brl(totalFaturas(faturas))}`;
+  const intro = `Oi, ${nome}. Aqui é o Vitor, da Viva Net. Consta ${qtdFaturas(faturas.length)} no seu contrato, no total de <strong>${brl(totalFaturas(faturas))}</strong>, e por isso o seu serviço de internet está suspenso.`;
+  const religa = '<strong>Pagando com PIX, o serviço é religado na hora</strong>, assim que o pagamento é confirmado. Pelo boleto, a religação acontece após a compensação bancária.';
+  const corpo = p(intro) + p(religa) + blocoFaturas(faturas, COR.vinho) + '<div style="height:18px;"></div>' +
+    botao('Ver tudo na Área do Cliente', AREA_CLIENTE, COR.indigo) + '<div style="height:12px;"></div>' +
+    p('Se você já pagou, desconsidere este e-mail.', `color:${COR.cinza};font-size:14px;`);
+  return {
+    assunto,
+    html: layout(assunto, 'Serviço suspenso', COR.vinho, corpo, resumo),
+    texto: `${intro.replace(/<[^>]+>/g, '')}\n\n${religa.replace(/<[^>]+>/g, '')}\n\n${textoFaturas(faturas)}\n\nÁrea do Cliente: ${AREA_CLIENTE}\n\nSe você já pagou, desconsidere este e-mail.${RODAPE_TXT}`,
+  };
+}
+
+/** Contrato ativo com fatura vencida: avisa a data da suspensão (vencimento + 5 dias). */
+export function emailComunicadoAviso(c: ContatoContrato, faturas: FaturaEmail[], dataSuspensao: string) {
+  const nome = esc(primeiroNome(c.nome));
+  const assunto = 'Viva Net: fatura em aberto. Evite a suspensão do serviço';
+  const resumo = `Suspensão prevista para ${dataBR(dataSuspensao)}`;
+  const intro = `Oi, ${nome}. Aqui é o Vitor, da Viva Net. Consta ${qtdFaturas(faturas.length)} no seu contrato, no total de <strong>${brl(totalFaturas(faturas))}</strong>. O serviço é suspenso 5 dias após o vencimento: <strong>a suspensão está prevista para ${dataBR(dataSuspensao)}</strong>.`;
+  const depois = 'Para evitar a suspensão, pague com PIX: a confirmação é imediata. Se você já pagou, desconsidere este e-mail.';
+  const corpo = p(intro) + blocoFaturas(faturas, COR.vinho) + '<div style="height:18px;"></div>' +
+    botao('Ver tudo na Área do Cliente', AREA_CLIENTE, COR.indigo) + '<div style="height:12px;"></div>' +
+    p(depois, `color:${COR.cinza};font-size:14px;`);
+  return {
+    assunto,
+    html: layout(assunto, 'Aviso de suspensão', COR.vinho, corpo, resumo),
+    texto: `${intro.replace(/<[^>]+>/g, '')}\n\n${textoFaturas(faturas)}\n\nÁrea do Cliente: ${AREA_CLIENTE}\n\n${depois}${RODAPE_TXT}`,
+  };
+}
