@@ -41,7 +41,7 @@ const VENCIMENTO_MINIMO = /^\d{4}-\d{2}-\d{2}$/.test(process.env.REGUA_VENCIMENT
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const somarDias = (iso: string, d: number) => new Date(Date.parse(iso + 'T12:00:00Z') + d * 86400000).toISOString().slice(0, 10);
 const horaSP = () => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
-const janelaDaRegua = () => [5, 6, 15, 16].includes(horaSP());
+const janelaDaRegua = () => args.includes('--agora') ? false : [5, 6, 15, 16].includes(horaSP());
 const brl = (v: number) => v.toFixed(2).replace('.', ',');
 
 type Grupo = 'suspenso' | 'aviso' | 'borda';
