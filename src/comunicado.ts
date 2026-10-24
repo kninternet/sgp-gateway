@@ -7,14 +7,18 @@
  *   aviso     → contrato ativo, dentro dos 5 dias após o vencimento: "a suspensão está prevista para DD/MM"
  *   borda     → contrato ativo com mais de 5 dias de atraso: NÃO recebe nada; só aparece no relatório
  *
- * Cada contrato recebe o comunicado uma única vez (histórico em regua_envios), mesmo rodando de novo.
+ * Rodadas (--rodada N, padrão 1): cada rodada tem etapas próprias no histórico (regua_envios).
+ *   rodada 1 → COMUNICADO_SUSPENSO / COMUNICADO_AVISO (envio de 22/10/2026)
+ *   rodada 2 → COMUNICADO_SUSPENSO_2 / COMUNICADO_AVISO_2, e assim por diante
+ * Dentro de uma rodada, cada contrato recebe uma única vez, mesmo rodando de novo. Quem pagou não entra na lista,
+ * porque as faturas vencidas são consultadas no SGP na hora.
  * O envio para sozinho nos horários da régua (5h–6h59 e 15h–16h59, horário de São Paulo); basta rodar de novo depois.
  *
  * Uso:
- *   node --env-file=.env dist/src/comunicado.js                          simula: conta, gera CSV, não envia
+ *   node --env-file=.env dist/src/comunicado.js [--rodada 2]                          simula: conta, gera CSV, não envia
  *   node --env-file=.env dist/src/comunicado.js --teste eu@x.com --contrato 740508
- *                                                                        envia os 2 modelos desse contrato para eu@x.com
- *   node --env-file=.env dist/src/comunicado.js --enviar [--limite 50]   envia de verdade
+ *                                                                                    envia os 2 modelos desse contrato para eu@x.com
+ *   node --env-file=.env dist/src/comunicado.js [--rodada 2] --enviar [--limite 50]  envia de verdade
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,7 +32,6 @@ import { hojeSP } from './util.js';
 
 const POP = 100072;
 const DIAS_ATE_SUSPENDER = 5;
-const ETAPAS = { suspenso: 'COMUNICADO_SUSPENSO', aviso: 'COMUNICADO_AVISO' } as const;
 
 const args = process.argv.slice(2);
 const valorArg = (nome: string) => { const i = args.indexOf(nome); return i >= 0 ? args[i + 1] : undefined; };
@@ -36,12 +39,16 @@ const ENVIAR = args.includes('--enviar');
 const TESTE_PARA = valorArg('--teste');
 const TESTE_CONTRATO = Number(valorArg('--contrato') || 0);
 const LIMITE = Number(valorArg('--limite') || 0) || Infinity;
+const RODADA = Number(valorArg('--rodada') || 1);
+if (!Number.isInteger(RODADA) || RODADA < 1 || RODADA > 20) throw new Error('--rodada precisa ser um número inteiro entre 1 e 20');
+const SUFIXO = RODADA === 1 ? '' : `_${RODADA}`;
+const ETAPAS = { suspenso: `COMUNICADO_SUSPENSO${SUFIXO}`, aviso: `COMUNICADO_AVISO${SUFIXO}` } as const;
 const VENCIMENTO_MINIMO = /^\d{4}-\d{2}-\d{2}$/.test(process.env.REGUA_VENCIMENTO_MINIMO ?? '') ? process.env.REGUA_VENCIMENTO_MINIMO! : '';
 
 const pausa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const somarDias = (iso: string, d: number) => new Date(Date.parse(iso + 'T12:00:00Z') + d * 86400000).toISOString().slice(0, 10);
 const horaSP = () => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
-const janelaDaRegua = () => [5, 6, 15, 16].includes(horaSP());
+const janelaDaRegua = () => args.includes('--agora') ? false : [5, 6, 15, 16].includes(horaSP());
 const brl = (v: number) => v.toFixed(2).replace('.', ',');
 
 type Grupo = 'suspenso' | 'aviso' | 'borda';
@@ -51,7 +58,7 @@ interface Item {
 }
 
 async function etapasAceitas(t: Tenant, contrato: number, fatura: number): Promise<void> {
-  // Garante que o histórico aceita as etapas novas ANTES de enviar. Tudo é desfeito (ROLLBACK): nada fica gravado.
+  // Garante que o histórico aceita as etapas desta rodada ANTES de enviar. Tudo é desfeito (ROLLBACK): nada fica gravado.
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
@@ -64,6 +71,7 @@ async function etapasAceitas(t: Tenant, contrato: number, fatura: number): Promi
   }
 }
 
+// Só olha as etapas da rodada atual: quem recebeu na rodada 1 recebe de novo na rodada 2 (se ainda estiver devendo).
 async function jaRecebeu(t: Tenant, contrato: number): Promise<boolean> {
   const { rows } = await pool.query(
     `SELECT 1 FROM ${schemaDe(t)}.regua_envios WHERE contrato_id = $1 AND etapa = ANY($2::text[]) AND status = 'enviado' LIMIT 1`,
@@ -108,7 +116,7 @@ async function levantar(t: Tenant, hoje: string): Promise<{ itens: Item[]; erros
 }
 
 function relatorio(itens: Item[], erros: number, soForaDoCorte: number, hoje: string) {
-  console.log(`\nComunicado de bloqueio · POP ${POP} · ${hoje}${VENCIMENTO_MINIMO ? ` · faturas vencidas a partir de ${VENCIMENTO_MINIMO}` : ''}`);
+  console.log(`\nComunicado de bloqueio · POP ${POP} · rodada ${RODADA} · ${hoje}${VENCIMENTO_MINIMO ? ` · faturas vencidas a partir de ${VENCIMENTO_MINIMO}` : ''}`);
   for (const g of ['suspenso', 'aviso', 'borda'] as Grupo[]) {
     const gi = itens.filter((i) => i.grupo === g);
     const comEmail = gi.filter((i) => i.email).length;
@@ -121,7 +129,7 @@ function relatorio(itens: Item[], erros: number, soForaDoCorte: number, hoje: st
   if (soForaDoCorte) console.log(`  Contratos com dívida SÓ antes da data de corte (fora do envio): ${soForaDoCorte}`);
   if (erros) console.log(`  Contratos não consultados (erro no SGP): ${erros}`);
 
-  const arq = join(process.env.HOME ?? '.', `comunicado-${POP}-${hoje}.csv`);
+  const arq = join(process.env.HOME ?? '.', `comunicado-${POP}-${hoje}${RODADA === 1 ? '' : `-rodada${RODADA}`}.csv`);
   const linhas = ['contrato;status;grupo;faturas;total;vencimento_mais_antigo;suspensao;email;faturas_fora_do_corte'];
   for (const i of itens) {
     linhas.push([i.contrato, i.status, i.grupo, i.faturas.length, brl(i.total), i.faturas[0].vencimento, i.suspensao,
@@ -153,7 +161,7 @@ async function enviar(t: Tenant, itens: Item[]) {
   for (const i of itens) {
     if (i.grupo === 'borda' || !i.email) continue;
     if (enviados >= LIMITE) { console.log(`Limite de ${LIMITE} atingido.`); break; }
-    if (janelaDaRegua()) { console.log('Horário da régua de cobrança: parei aqui. Rode de novo depois das 7h ou das 17h; continua de onde parou.'); break; }
+    if (janelaDaRegua()) { console.log(`Horário da régua de cobrança: parei aqui. Rode de novo depois das 7h ou das 17h, com --rodada ${RODADA}; continua de onde parou.`); break; }
     if (await jaRecebeu(t, i.contrato)) { pulados++; continue; }
     const c = await contatoDoContrato(t, i.contrato);
     if (!c?.email) continue;
@@ -165,13 +173,13 @@ async function enviar(t: Tenant, itens: Item[]) {
       enviados++;
       if (enviados % 10 === 0) console.log(`  ${enviados} enviados...`);
     } catch (e) {
-      // Falha não vai para o histórico: o contrato é tentado de novo na próxima rodada.
+      // Falha não vai para o histórico: o contrato é tentado de novo na próxima execução da mesma rodada.
       console.log(`  erro no contrato ${i.contrato}: ${(e as Error).message.slice(0, 160)}`);
       erros++;
     }
     await pausa(config.REGUA_INTERVALO_MS);
   }
-  console.log(`\nEnvio: ${enviados} enviados · ${pulados} já tinham recebido · ${erros} erros`);
+  console.log(`\nEnvio (rodada ${RODADA}): ${enviados} enviados · ${pulados} já tinham recebido nesta rodada · ${erros} erros`);
 }
 
 async function main() {
@@ -182,7 +190,7 @@ async function main() {
   if ((ENVIAR || TESTE_PARA) && !smtpConfigurado(t)) throw new Error('SMTP não configurado');
   if (TESTE_PARA) { if (!TESTE_CONTRATO) throw new Error('use --contrato junto com --teste'); await teste(t, hoje); return; }
   if (ENVIAR && janelaDaRegua()) throw new Error('horário da régua de cobrança (5h–6h59 e 15h–16h59): rode fora dele');
-  console.log(`Consultando o SGP (pode levar alguns minutos)...`);
+  console.log(`Rodada ${RODADA} (etapas ${ETAPAS.suspenso} / ${ETAPAS.aviso}). Consultando o SGP (pode levar alguns minutos)...`);
   const { itens, erros, soForaDoCorte } = await levantar(t, hoje);
   relatorio(itens, erros, soForaDoCorte, hoje);
   if (ENVIAR) await enviar(t, itens);
