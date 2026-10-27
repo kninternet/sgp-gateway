@@ -1,6 +1,8 @@
 /**
- * Área do Cliente (site): login por CPF/CNPJ + código enviado ao e-mail DO CADASTRO.
- * O cliente nunca informa o e-mail: é isso que impede acessar as faturas de outra pessoa só com o CPF.
+ * Área do Cliente (site). Dois modos de login, escolhidos no app area-vivanet (AREA_LOGIN):
+ *   cpf    → /v1/area/entrar: só o CPF/CNPJ do titular. A Área mostra só faturas, PIX e 2ª via.
+ *   codigo → /v1/area/codigo + /v1/area/verificar: código enviado ao e-mail DO CADASTRO (fluxo anterior,
+ *            mantido para reverter sem deploy).
  * Depois do login, as telas usam /v1/faturas, /v1/pix e /v1/segunda-via apenas para os contratos
  * devolvidos aqui (a trava fica no app area-vivanet, na sessão assinada).
  */
@@ -18,6 +20,22 @@ import { atualizarBase, clientesNoSgp, docFormatado } from './identificar.js';
 const VALIDADE_MIN = 15;
 const MAX_TENTATIVAS = 5;
 const MAX_ENVIOS_HORA = 3;
+
+// Login só com CPF/CNPJ: limite por documento (além do limite por IP no app), em memória.
+const LIMITE_ENTRAR = 10;
+const JANELA_ENTRAR_MS = 15 * 60_000;
+const entradas = new Map<string, number[]>();
+function dentroDoLimiteDoc(doc: string): boolean {
+  const agora = Date.now();
+  const recentes = (entradas.get(doc) ?? []).filter((t) => agora - t < JANELA_ENTRAR_MS);
+  if (recentes.length >= LIMITE_ENTRAR) { entradas.set(doc, recentes); return false; }
+  recentes.push(agora);
+  entradas.set(doc, recentes);
+  if (entradas.size > 5000) {
+    for (const [k, v] of entradas) if (!v.some((t) => agora - t < JANELA_ENTRAR_MS)) entradas.delete(k);
+  }
+  return true;
+}
 
 const Doc = z
   .string()
@@ -79,6 +97,21 @@ const primeiroNome = (nome: string) => {
 };
 
 export async function rotaArea(app: FastifyInstance) {
+  // Login só com CPF/CNPJ (modo "cpf" do app). Devolve o primeiro nome e os contratos dos POPs do canal.
+  app.post('/v1/area/entrar', async (req, reply) => {
+    const { tenant, canal } = req.ctx!;
+    if (!canal.permite_area) return reply.code(403).send({ ok: false, erro: 'nao_permitido_neste_canal' });
+    const p = z.object({ cpfcnpj: Doc }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send({ ok: false, erro: 'documento_invalido' });
+    if (!dentroDoLimiteDoc(p.data.cpfcnpj)) return reply.code(429).send({ ok: false, erro: 'muitas_tentativas' });
+
+    const t = await titular(tenant, canal, p.data.cpfcnpj, true);
+    if (!t) return reply.code(404).send({ ok: false, erro: 'nao_encontrado' });
+    req.auditoria!.cliente_id = t.cliente_id;
+
+    return { ok: true, nome: primeiroNome(t.nome), contratos: t.contratos };
+  });
+
   app.post('/v1/area/codigo', async (req, reply) => {
     const { tenant, canal } = req.ctx!;
     if (!canal.permite_area) return reply.code(403).send({ ok: false, erro: 'nao_permitido_neste_canal' });
