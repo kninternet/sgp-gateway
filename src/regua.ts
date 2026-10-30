@@ -3,6 +3,7 @@
  *   1. Boas-vindas para contratos que aparecem ativos pela primeira vez (o sync das 3h atualiza os status).
  *      Na primeira execução, os contratos já ativos são só registrados ("semeados"), sem envio.
  *   2. Régua de cobrança: para cada fatura em aberto, a etapa do dia (D-5, D-1, D0, D+2, D+4).
+ *   3. Reativação: todo dia REATIVACAO_DIA (20), um e-mail para cada contrato Suspenso, uma vez por mês.
  * Cada etapa de cada fatura sai uma única vez (índice único em regua_envios).
  *
  * Uso:
@@ -15,7 +16,7 @@ import { config } from './config.js';
 import { pool } from './db.js';
 import { schemaDe, tenantsAtivos, type Tenant } from './tenants.js';
 import { contatoDoContrato, faturasAbertas, mascararEmail } from './regua/dados.js';
-import { DIAS_DA_ETAPA, emailBoasVindas, emailFatura, emailLista, type EtapaRegua } from './regua/modelos.js';
+import { DIAS_DA_ETAPA, emailBoasVindas, emailFatura, emailLista, emailReativacao, type EtapaRegua } from './regua/modelos.js';
 import { enviarEmail, fecharSmtp, smtpConfigurado } from './regua/smtp.js';
 import { hojeSP } from './util.js';
 
@@ -128,6 +129,43 @@ async function cobranca(t: Tenant, resumo: Record<string, number>) {
   }
 }
 
+/** Todo dia REATIVACAO_DIA: e-mail para cada contrato Suspenso com fatura em aberto (desde a data de corte). */
+async function reativacao(t: Tenant, resumo: Record<string, number>) {
+  const hoje = hojeSP();
+  if (Number(hoje.slice(8, 10)) !== config.REATIVACAO_DIA) return;
+  const s = schemaDe(t);
+  const etapa = `REATIVACAO_${hoje.slice(0, 7).replace('-', '')}`;
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT DISTINCT ct.id FROM ${s}.contratos ct
+       JOIN ${s}.contatos co ON co.cliente_id = ct.cliente_id AND co.tipo = 'emails'
+      WHERE ct.pop_id = ANY($1::int[]) AND trim(ct.status) = 'Suspenso' ORDER BY ct.id`,
+    [t.pops_permitidos],
+  );
+  for (const r of rows) {
+    const id = Number(r.id);
+    const ja = await pool.query(
+      `SELECT 1 FROM ${s}.regua_envios WHERE origem = 'regua' AND status = 'enviado' AND etapa = $1 AND contrato_id = $2`,
+      [etapa, id],
+    );
+    if (ja.rowCount) continue;
+    let faturas;
+    try { faturas = await faturasAbertas(t, id); } catch { resumo.erros_sgp = (resumo.erros_sgp ?? 0) + 1; continue; }
+    faturas = faturas.filter((f) => !VENCIMENTO_MINIMO || f.vencimento >= VENCIMENTO_MINIMO);
+    if (!faturas.length) continue;
+    const c = await contatoDoContrato(t, id);
+    if (!c?.email) continue;
+    resumo.REATIVACAO = (resumo.REATIVACAO ?? 0) + 1;
+    if (SIMULAR) continue;
+    try {
+      await enviar(t, c.email, emailReativacao(c, faturas));
+      await registrar(t, etapa, id, null, c.email, 'enviado');
+    } catch (e) {
+      await registrar(t, etapa, id, null, c.email, 'erro', (e as Error).message.slice(0, 300));
+      resumo.erros = (resumo.erros ?? 0) + 1;
+    }
+  }
+}
+
 async function teste(t: Tenant) {
   const c = await contatoDoContrato(t, TESTE_CONTRATO);
   if (!c) throw new Error(`contrato ${TESTE_CONTRATO} não está na base deste tenant`);
@@ -137,6 +175,7 @@ async function teste(t: Tenant) {
   const modelos = [
     ...(['PRE_FATURA_D5', 'VENCE_AMANHA', 'VENCE_HOJE', 'ATRASO_D2', 'PRE_BLOQUEIO_D4', 'FATURA'] as const).map((e) => emailFatura(e, c, faturas[0])),
     emailLista(c, faturas.slice(0, 3)),
+    emailReativacao(c, faturas.slice(0, 3)),
     emailBoasVindas(c),
   ];
   for (const m of modelos) {
@@ -152,6 +191,7 @@ async function main() {
     const resumo: Record<string, number> = {};
     await boasVindas(t, resumo);
     await cobranca(t, resumo);
+    await reativacao(t, resumo);
     console.log(`[${t.id}] ${SIMULAR ? 'SIMULAÇÃO ' : ''}${hojeSP()}${VENCIMENTO_MINIMO ? ` (vencimentos a partir de ${VENCIMENTO_MINIMO})` : ''}`, JSON.stringify(resumo));
   }
 }

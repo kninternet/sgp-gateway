@@ -315,3 +315,33 @@ export function emailComunicadoAviso(c: ContatoContrato, faturas: FaturaEmail[],
     texto: `${intro.replace(/<[^>]+>/g, '')}\n\n${textoFaturas(faturas)}\n\nÁrea do Cliente: ${AREA_CLIENTE}\n\n${depois}${RODAPE_TXT}`,
   };
 }
+
+// ---------------------------------------------------------------- reativação (régua, todo dia 20, contratos suspensos)
+
+const AREA_REATIVACAO = 'https://area.vivanettelecom.com.br/';
+
+/** Contrato suspenso: convite para regularizar e voltar a navegar, com até 3 faturas em aberto. */
+export function emailReativacao(c: ContatoContrato, faturas: FaturaEmail[]) {
+  const nomeTexto = primeiroNome(c.nome);
+  const nome = esc(nomeTexto);
+  const assunto = `${nomeTexto}, volte a navegar hoje mesmo 💙`;
+  const resumo = `${qtdFaturas(faturas.length)} · ${brl(totalFaturas(faturas))}`;
+  const intro = `Oi, ${nome}. Aqui é o Vitor, da Viva Net. Notamos que o seu sinal está suspenso. <strong>Regularize e volte a navegar hoje mesmo!</strong>`;
+  const depois = 'Pagando com PIX, a liberação é automática após a confirmação. Se você já pagou, desconsidere este e-mail.';
+  const lista = faturas.slice(0, 3).map((f, i) =>
+    (i > 0 ? `<div style="border-top:1px solid ${COR.linha};margin:22px 0;"></div>` : '') +
+    caixaFatura(f, COR.indigo, 'Vencimento original') + pagamento(f, COR.indigo)).join('');
+  const resto = faturas.length > 3
+    ? p(`Há mais ${faturas.length - 3} fatura(s) em aberto. Veja todas na <a href="${AREA_REATIVACAO}" style="color:${COR.indigo};font-weight:700;">Área do Cliente</a>.`, `color:${COR.cinza};font-size:14px;`)
+    : '';
+  const corpo = p(intro) + lista + resto + '<div style="height:18px;"></div>' +
+    botao('Ver tudo na Área do Cliente', AREA_REATIVACAO, COR.indigo) + '<div style="height:12px;"></div>' +
+    p(depois, `color:${COR.cinza};font-size:14px;`);
+  const textoLista = faturas.slice(0, 3).map(textoPagamento).join('\n\n') +
+    (faturas.length > 3 ? `\n\nHá mais ${faturas.length - 3} fatura(s). Veja todas na Área do Cliente: ${AREA_REATIVACAO}` : '');
+  return {
+    assunto,
+    html: layout(assunto, 'Reativação', COR.indigo, corpo, resumo),
+    texto: `${intro.replace(/<[^>]+>/g, '')}\n\n${textoLista}\n\nÁrea do Cliente: ${AREA_REATIVACAO}\n\n${depois}${RODAPE_TXT}`,
+  };
+}

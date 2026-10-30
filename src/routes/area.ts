@@ -1,6 +1,7 @@
 /**
  * Área do Cliente (site). Dois modos de login, escolhidos no app area-vivanet (AREA_LOGIN):
  *   cpf    → /v1/area/entrar: só o CPF/CNPJ do titular. A Área mostra só faturas, PIX e 2ª via.
+ *   link   → /v1/area/link: link pessoal enviado por SMS (area/p/<código>), um contrato, com validade.
  *   codigo → /v1/area/codigo + /v1/area/verificar: código enviado ao e-mail DO CADASTRO (fluxo anterior,
  *            mantido para reverter sem deploy).
  * Depois do login, as telas usam /v1/faturas, /v1/pix e /v1/segunda-via apenas para os contratos
@@ -110,6 +111,30 @@ export async function rotaArea(app: FastifyInstance) {
     req.auditoria!.cliente_id = t.cliente_id;
 
     return { ok: true, nome: primeiroNome(t.nome), contratos: t.contratos };
+  });
+
+  // Link pessoal (SMS e e-mails da régua): abre a Área direto no contrato, sem CPF.
+  // Só vale dentro da validade e para contratos dos POPs do canal; cada abertura conta um clique.
+  app.post('/v1/area/link', async (req, reply) => {
+    const { tenant, canal } = req.ctx!;
+    if (!canal.permite_area) return reply.code(403).send({ ok: false, erro: 'nao_permitido_neste_canal' });
+    const p = z.object({ codigo: z.string().trim().regex(/^[A-Za-z0-9]{8,16}$/) }).safeParse(req.body);
+    if (!p.success) return reply.code(400).send({ ok: false, erro: 'link_invalido' });
+
+    const s = schemaDe(tenant);
+    const { rows } = await pool.query<{ contrato_id: string; cliente_id: string; nome: string }>(
+      `UPDATE ${s}.links_area la
+          SET cliques = la.cliques + 1, primeiro_clique = coalesce(la.primeiro_clique, now()), ultimo_clique = now()
+         FROM ${s}.contratos ct JOIN ${s}.clientes cl ON cl.id = ct.cliente_id
+        WHERE la.codigo = $1 AND la.expira_em > now() AND ct.id = la.contrato_id AND ct.pop_id = ANY($2::int[])
+        RETURNING la.contrato_id, cl.id AS cliente_id, cl.nome`,
+      [p.data.codigo, canal.pops],
+    );
+    const r = rows[0];
+    if (!r) return reply.code(404).send({ ok: false, erro: 'link_expirado' });
+    req.auditoria!.cliente_id = Number(r.cliente_id);
+
+    return { ok: true, nome: primeiroNome(r.nome), contratos: [Number(r.contrato_id)] };
   });
 
   app.post('/v1/area/codigo', async (req, reply) => {
