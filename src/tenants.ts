@@ -11,7 +11,7 @@ export interface Tenant {
   empresa_cnpj: string | null;
   gerar_os_2via: boolean;
   link_boleto_base: string | null;
-  area_link_base: string | null;
+  area_link_base?: string | null; // só a régua lê (tenantsAtivos); o contexto das rotas não precisa
   sgp_write_app: string | null;
   sgp_write_token_env: string | null;
 }
